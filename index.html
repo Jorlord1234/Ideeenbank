@@ -31,6 +31,7 @@ h1{font-size:18px;margin:0 0 10px}
 #main{flex:1;display:flex;flex-direction:column;min-width:0}
 #bar{display:flex;gap:6px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
 #bar button{padding:6px 9px}#t{flex:1;min-width:140px;font-weight:700}#lab{width:170px}#back{display:none}
+.cap{color:var(--mut)}.it .chip{display:inline-block;margin:3px 4px 0 0;cursor:default}
 #zl{min-width:42px;text-align:center;color:var(--mut)}
 #wrap{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y}
 #board{position:relative;width:3000px;height:2000px;transform-origin:0 0;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:32px 32px}
@@ -52,7 +53,7 @@ h1{font-size:18px;margin:0 0 10px}
 <aside id="side">
 <h1>Ideeënbank</h1>
 <input id="add" placeholder="Nieuw idee: titel + Enter" enterkeyhint="done">
-<button id="photo">📷 Foto als nieuw idee</button><input id="pfile" type="file" accept="image/*" style="display:none">
+<button id="photo">Foto als nieuw idee</button><input id="pfile" type="file" accept="image/*" style="display:none">
 <input id="q" type="search" placeholder="zoek…">
 <div id="labs"></div>
 <div id="list"></div>
@@ -61,9 +62,9 @@ h1{font-size:18px;margin:0 0 10px}
 <div id="empty">Kies een idee in de lijst of maak er een.</div>
 <div id="ed" style="display:none;flex:1;flex-direction:column;min-height:0">
 <div id="bar">
-<button id="back">← Lijst</button><input id="t"><input id="lab" placeholder="labels, met komma's"><button id="pin" title="Vastzetten">📌</button>
+<button id="back">← Lijst</button><input id="t"><span class="cap">Labels:</span><input id="lab" placeholder="bijv. duurzaam, zorg"><button id="pin">Vastzetten</button>
 <button id="btxt">+ Tekst</button><button id="bimg">+ Afbeelding</button><input id="file" type="file" accept="image/*" style="display:none">
-<button id="undo" title="Ongedaan maken">↶</button><button id="zo">−</button><span id="zl">100%</span><button id="zi">+</button>
+<button id="undo">Ongedaan</button><button id="zo">−</button><span id="zl">100%</span><button id="zi">+</button><button id="fit">Alles zien</button>
 <button id="png">PNG</button><button id="pdf">PDF</button><button id="dup">Dupliceer</button><button id="del">Verwijder</button>
 </div>
 <div id="wrap"><div id="sizer" style="width:3000px;height:2000px"><div id="board"><svg id="lines"></svg><div id="blocks"></div></div></div></div>
@@ -82,15 +83,16 @@ const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",
 const cur=()=>notes.find(n=>n.id===sel),I=n=>n.items||[],L=n=>n.links||[];
 const bid=()=>"b"+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
 const now=()=>new Date().toISOString();
+const chk=r=>{if(r.error)alert("Opslaan mislukt: "+r.error.message+" (heb je update.sql uitgevoerd in Supabase?)");};
 const typing=()=>document.activeElement&&document.activeElement.matches("textarea,#lab,#t");
 function sortN(){notes.sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0)||(a.created_at<b.created_at?-1:1));}
 function renderList(){
  const q=$("q").value.toLowerCase(),all=[...new Set(notes.flatMap(n=>n.labels||[]))];
  $("labs").innerHTML=all.map(l=>`<span class="chip${flt===l?" on":""}" data-l="${esc(l)}">${esc(l)}</span>`).join("");
- $("list").innerHTML=notes.filter(n=>(!flt||(n.labels||[]).includes(flt))&&(!q||JSON.stringify(n).toLowerCase().includes(q))).map(n=>`<div class="it${n.id===sel?" sel":""}" data-id="${esc(n.id)}"><b>${n.pinned?"📌 ":""}${esc(n.title)}</b><small>${(n.labels||[]).map(esc).join(", ")||I(n).length+" blok(ken)"}</small></div>`).join("")||'<div style="color:var(--mut)">Niets gevonden.</div>';
+ $("list").innerHTML=notes.filter(n=>(!flt||(n.labels||[]).includes(flt))&&(!q||JSON.stringify(n).toLowerCase().includes(q))).map(n=>`<div class="it${n.id===sel?" sel":""}" data-id="${esc(n.id)}"><b>${n.pinned?"Vast: ":""}${esc(n.title)}</b><div>${(n.labels||[]).map(l=>`<span class="chip">${esc(l)}</span>`).join("")}</div><small>${I(n).length} blok(ken)</small></div>`).join("")||'<div style="color:var(--mut)">Niets gevonden.</div>';
 }
 $("labs").onclick=e=>{const l=e.target.dataset.l;if(l){flt=flt===l?null:l;renderList();}};
-$("list").onclick=e=>{const el=e.target.closest(".it");if(el){sel=el.dataset.id;linkFrom=null;document.body.classList.add("vb");openIdea();renderList();}};
+$("list").onclick=e=>{const el=e.target.closest(".it");if(el){sel=el.dataset.id;linkFrom=null;document.body.classList.add("vb");openIdea();fitView();renderList();}};
 $("q").oninput=renderList;
 function openIdea(){
  const n=cur();$("empty").style.display=n?"none":"flex";$("ed").style.display=n?"flex":"none";if(!n)return;
@@ -99,7 +101,7 @@ function openIdea(){
 function renderBoard(){
  const n=cur();if(!n)return;
  $("blocks").innerHTML=I(n).map(b=>{const t=b.type==="img";const col=PAL[b.c||0];
-  return `<div class="blk${linkFrom===b.id?" lf":""}" data-id="${esc(b.id)}" data-t="${t?"img":"text"}" style="left:${b.x}px;top:${b.y}px;width:${b.w||230}px;${t?"":"height:"+(b.h||150)+"px"}"><div class="hd" style="${col?`background:color-mix(in srgb,${col} 40%,var(--card))`:""}"><span>⠿</span><span><i data-a="c" title="kleur">●</i><i data-a="l" title="verbinden">↗</i><i data-a="x" title="verwijderen">✕</i></span></div>${t?`<img src="${esc(b.url)}" alt="">`:`<textarea placeholder="Schrijf hier…">${esc(b.text)}</textarea>`}<div class="rs"></div></div>`;}).join("");
+  return `<div class="blk${linkFrom===b.id?" lf":""}" data-id="${esc(b.id)}" data-t="${t?"img":"text"}" style="left:${b.x}px;top:${b.y}px;width:${b.w||230}px;${t?"":"height:"+(b.h||150)+"px"}"><div class="hd" style="${col?`background:color-mix(in srgb,${col} 40%,var(--card))`:""}"><span>⠿</span><span><i data-a="c" title="kleur">●</i><i data-a="l" title="verbinden">link</i><i data-a="x" title="verwijderen">✕</i></span></div>${t?`<img src="${esc(b.url)}" alt="">`:`<textarea placeholder="Schrijf hier…">${esc(b.text)}</textarea>`}<div class="rs"></div></div>`;}).join("");
  drawLines();}
 function drawLines(){
  const n=cur();if(!n)return;const bd=$("blocks");
@@ -144,6 +146,12 @@ function setZ(v,mx,my){const w=$("wrap");v=Math.min(2,Math.max(.3,v));if(mx==nul
  const cx=(w.scrollLeft+mx)/z,cy=(w.scrollTop+my)/z;z=v;
  $("board").style.transform=`scale(${z})`;$("sizer").style.width=3000*z+"px";$("sizer").style.height=2000*z+"px";$("zl").textContent=Math.round(z*100)+"%";
  w.scrollLeft=cx*z-mx;w.scrollTop=cy*z-my;}
+function fitView(){const n=cur(),B=n?I(n):[],w=$("wrap");
+ if(!B.length){setZ(1,0,0);w.scrollLeft=0;w.scrollTop=0;return;}
+ const x0=Math.min(...B.map(b=>b.x)),y0=Math.min(...B.map(b=>b.y)),x1=Math.max(...B.map(b=>b.x+(b.w||230))),y1=Math.max(...B.map(b=>b.y+(b.type==="img"?(b.w||230):(b.h||150))));
+ setZ(Math.min(1,(w.clientWidth-40)/(x1-x0+40),(w.clientHeight-40)/(y1-y0+40)),0,0);
+ w.scrollLeft=Math.max(0,(x0-20)*z);w.scrollTop=Math.max(0,(y0-20)*z);}
+$("fit").onclick=fitView;
 $("zi").onclick=()=>setZ(z*1.2);$("zo").onclick=()=>setZ(z/1.2);
 $("wrap").addEventListener("wheel",e=>{if(!e.ctrlKey)return;e.preventDefault();const r=$("wrap").getBoundingClientRect();setZ(z*(e.deltaY<0?1.1:1/1.1),e.clientX-r.left,e.clientY-r.top);},{passive:false});
 let pd=0;const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
@@ -171,9 +179,9 @@ async function create(d){
  if(!notes.find(n=>n.id===data.id)){notes.push(data);sortN();}
  sel=data.id;document.body.classList.add("vb");renderList();openIdea();}
 $("add").addEventListener("keydown",e=>{if(e.key!=="Enter")return;const t=$("add").value.trim();if(!t)return;$("add").value="";create({title:t,items:[]});});
-$("t").onchange=()=>{const v=$("t").value.trim(),n=cur();if(n&&v){n.title=v;renderList();sb.from("ideas").update({title:v,updated_at:now()}).eq("id",n.id).then(()=>{});}};
-$("lab").onchange=()=>{const n=cur();if(!n)return;n.labels=$("lab").value.split(",").map(s=>s.trim()).filter(Boolean);renderList();sb.from("ideas").update({labels:n.labels,updated_at:now()}).eq("id",n.id).then(()=>{});};
-$("pin").onclick=()=>{const n=cur();if(!n)return;n.pinned=!n.pinned;sortN();renderList();$("pin").classList.toggle("on",n.pinned);sb.from("ideas").update({pinned:n.pinned}).eq("id",n.id).then(()=>{});};
+$("t").onchange=()=>{const v=$("t").value.trim(),n=cur();if(n&&v){n.title=v;renderList();sb.from("ideas").update({title:v,updated_at:now()}).eq("id",n.id).then(chk);}};
+$("lab").onchange=()=>{const n=cur();if(!n)return;n.labels=$("lab").value.split(",").map(s=>s.trim()).filter(Boolean);renderList();sb.from("ideas").update({labels:n.labels,updated_at:now()}).eq("id",n.id).then(chk);};
+$("pin").onclick=()=>{const n=cur();if(!n)return;n.pinned=!n.pinned;sortN();renderList();$("pin").classList.toggle("on",n.pinned);sb.from("ideas").update({pinned:n.pinned}).eq("id",n.id).then(chk);};
 $("dup").onclick=()=>{const n=cur();if(n)create({title:n.title+" (kopie)",items:I(n),links:L(n),labels:n.labels||[]});};
 $("back").onclick=()=>document.body.classList.remove("vb");
 $("del").onclick=async()=>{const n=cur();if(n&&confirm("Dit idee verwijderen?")){sel=null;document.body.classList.remove("vb");notes=notes.filter(x=>x.id!==n.id);await sb.from("ideas").delete().eq("id",n.id);openIdea();renderList();}};
